@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../../../Downloads/com-tools/spring-petclinic"
+		},
+		{
+			"name": "java-backend-api",
+			"path": "../../../../../.."
+		}
+	],
+	"settings": {}
+}
