@@ -1,0 +1,22 @@
+[Unit]
+Description=Backend Service (Spring Boot JAR)
+After=network.target
+
+[Service]
+# The user who should run the app (use jenkins or another service account)
+User=jenkins
+WorkingDirectory=/opt/backend-service
+
+# Command to start the app
+ExecStart=/usr/bin/java -jar /opt/backend-service/backend-service.jar
+
+# Restart options
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+
+# JVM options can be added if needed, e.g.:
+# ExecStart=/usr/bin/java -Xms512m -Xmx1024m -jar /opt/backend-service/backend-service.jar
+
+[Install]
+WantedBy=multi-user.target
