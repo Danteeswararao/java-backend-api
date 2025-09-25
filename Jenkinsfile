@@ -4,7 +4,14 @@ pipeline {
     tools {
         maven 'maven' 
     }
-
+    
+    environment {
+        SONARQUBE_SERVER = 'SonarQube' // Must match the name you set in Jenkins
+        SONAR_PROJECT_KEY = 'java-backend-api'
+        SONAR_PROJECT_NAME = 'java-backend-api'
+        SONAR_LOGIN = credentials('sonarqube') // Add your Sonar token in Jenkins credentials
+    }
+    
     stages {
         stage('Checkout') {
             steps {
@@ -32,6 +39,19 @@ pipeline {
             }
         }
 
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    mvn sonar:sonar \
+                        -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                        -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                        -Dsonar.login=${SONAR_LOGIN}
+                    '''
+                }
+            }
+        }
+        
         stage('Verify Service') {
             steps {
                 sh '''
