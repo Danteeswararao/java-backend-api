@@ -1,9 +1,25 @@
+# Use Eclipse Temurin JRE 17 as the base image
 FROM eclipse-temurin:17-jre
-ARG HOME="/apps"
-ARG ID="backend"
+
+# Define build arguments
+ARG HOME=/apps
+ARG ID=backend
 ARG JAR_FILE=target/*.jar
-ENV JAVA_OPTS ""
-RUN addgroup ${ID} && adduser --disable-password --ingroup ${ID} --home ${HOME} --gecos "" ${ID} 
+
+# Set environment variables
+ENV JAVA_OPTS=""
+
+# Create user and group
+RUN addgroup --system ${ID} && adduser --system --ingroup ${ID} --home ${HOME} ${ID}
+
+# Set working directory
 WORKDIR ${HOME}
-COPY --chown=${ID} ${JAR_FILE} ${HOME}/app.jar
-CMD java -jar $JAVA_OPTS app.jar
+
+# Copy the JAR file into the container and set ownership
+COPY --chown=${ID}:${ID} ${JAR_FILE} app.jar
+
+# Switch to the non-root user
+USER ${ID}
+
+# Run the application
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
