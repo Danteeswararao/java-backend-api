@@ -1,0 +1,88 @@
+pipeline {
+    agent { label 'docker' } 
+
+    environment {
+
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_REPO = 'dantesh/java-backend-api' 
+        DOCKER_CREDENTIALS = credentials('dockerhub')
+        APP_VERSION = "v${env.BUILD_NUMBER}"
+        CONTAINER_NAME = 'backend-service'
+        APP_PORT = '8090'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Danteeswararao/java-backend-api.git'
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                sh '''
+                    echo "🛠️ Building Docker image..."
+                    docker build -t ${DOCKER_REPO}:${APP_VERSION} -t ${DOCKER_REPO}:latest .
+
+                    echo "🔐 Logging into Docker registry..."
+                    echo "${DOCKER_CREDENTIALS_PSW}" | docker login -u "${DOCKER_CREDENTIALS_USR}" --password-stdin ${DOCKER_REGISTRY}
+
+                    echo "🚀 Pushing Docker images..."
+                    docker push ${DOCKER_REPO}:${APP_VERSION}
+                    docker push ${DOCKER_REPO}:latest
+                '''
+            }
+        }
+
+        stage('Deploy Application (Docker Run)') {
+            steps {
+                sh '''
+                    echo "🚀 Deploying application container..."
+
+                    # Stop old container if it exists
+                    if [ "$(docker ps -q -f name=${CONTAINER_NAME})" ]; then
+                        docker stop ${CONTAINER_NAME} || true
+                        docker rm ${CONTAINER_NAME} || true
+                    fi
+
+                    echo "🏗️ Running new container..."
+                    docker run -d \
+                        --name ${CONTAINER_NAME} \
+                        -p ${APP_PORT}:8090 \
+                        --restart unless-stopped \
+                        ${DOCKER_REPO}:latest
+
+                    echo "✅ Deployment successful!"
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    echo "🔍 Checking running container..."
+                    docker ps | grep ${CONTAINER_NAME} || true
+
+                    echo "🌐 Tail application logs..."
+                    docker logs --tail 20 ${CONTAINER_NAME} || true
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Build, push, and deploy successful!"
+        }
+        failure {
+            echo "❌ Pipeline failed — check logs!"
+        }
+    }
+}
