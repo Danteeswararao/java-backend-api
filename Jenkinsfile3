@@ -1,0 +1,112 @@
+pipeline {
+    agent { label 'docker' }
+
+    environment {
+
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_REPO = 'dantesh/java-backend-api'
+        DOCKER_CREDENTIALS = credentials('dockerhub')
+        APP_VERSION = "v${env.BUILD_NUMBER}"
+        CONTAINER_NAME = 'backend-service'
+        APP_PORT = '8090'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Danteeswararao/java-backend-api.git'
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    echo "🛠️ Building Docker image..."
+                    docker build -t ${DOCKER_REPO}:${APP_VERSION} -t ${DOCKER_REPO}:latest .
+                '''
+            }
+        }
+
+        stage('Docker Security Scan') {
+            steps {
+                script {
+                    sh '''
+                        echo "🔍 Running Docker image security scan using Trivy..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v $HOME/.cache/trivy:/root/.cache/ \
+                            aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL ${DOCKER_REPO}:latest > trivy-report.txt
+
+                        echo "📄 Trivy Scan Summary:"
+                        cat trivy-report.txt | tail -n 20
+
+                        echo "⚠️ Checking for critical vulnerabilities..."
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v $HOME/.cache/trivy:/root/.cache/ \
+                            aquasec/trivy:latest image --exit-code 1 --severity CRITICAL ${DOCKER_REPO}:latest || echo "Critical vulnerabilities found!"
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                sh '''
+                    echo "🔐 Logging into Docker registry..."
+                    echo "${DOCKER_CREDENTIALS_PSW}" | docker login -u "${DOCKER_CREDENTIALS_USR}" --password-stdin ${DOCKER_REGISTRY}
+
+                    echo "🚀 Pushing Docker images..."
+                    docker push ${DOCKER_REPO}:${APP_VERSION}
+                    docker push ${DOCKER_REPO}:latest
+                '''
+            }
+        }
+
+        stage('Deploy Application (Docker Run)') {
+            steps {
+                sh '''
+                    echo "🚀 Deploying Docker container..."
+                    if [ "$(docker ps -q -f name=${CONTAINER_NAME})" ]; then
+                        docker stop ${CONTAINER_NAME} || true
+                        docker rm ${CONTAINER_NAME} || true
+                    fi
+
+                    docker run -d \
+                        --name ${CONTAINER_NAME} \
+                        -p ${APP_PORT}:8090 \
+                        --restart unless-stopped \
+                        ${DOCKER_REPO}:latest
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    echo "🔍 Checking running container..."
+                    docker ps | grep ${CONTAINER_NAME} || true
+
+                    echo "🌐 Tailing last 20 log lines..."
+                    docker logs --tail 20 ${CONTAINER_NAME} || true
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Build, scan, push, and deploy successful!"
+        }
+        failure {
+            echo "❌ Pipeline failed — check logs!"
+        }
+    }
+}
